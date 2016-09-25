@@ -1,7 +1,7 @@
 #include "includes.h"
 
 #define MAXLINE 1024
-#define PORT 9873
+#define PORT 9872
 #define DEBUG 1
 
 // ***************************************************************************
@@ -9,8 +9,11 @@
 // *  Simply read a line from the socket and return it as a string.
 // ***************************************************************************
 string readCommand(int sockfd) {
-	char* buffer = new char[10];
+	char* buffer = new char[400];
 
+	//resets buffer to all 0s
+	bzero(buffer, 400);
+	
 	read(sockfd, buffer, 400);
 	
 	// Removes last 2 characters from the buffer
@@ -47,7 +50,6 @@ int parseCommand(string commandString) {
 		return 6;
 	}
 	else if (theString == "QUIT") {
-		cout << "why" << endl;
 		return 7;
 	}
 	
@@ -89,7 +91,14 @@ void* processConnection(void *arg) {
 	string cmdString = "";
 	string getString = "";
 	string parameter = "";
-	char *messageBuffer = NULL;
+	string messageBuffer = "";
+	
+	time_t currentTime;
+	
+	string dataRead = "";
+	ofstream ofs;
+	
+	writeCommand(sockfd, "220 Connection established\n");
 	while (connectionActive) {
 
 
@@ -112,7 +121,7 @@ void* processConnection(void *arg) {
 		// *******************************************************
 		switch (command) {
 		case HELO :
-			writeCommand(sockfd, "I GOT YOUR MESSAGE\n");
+			writeCommand(sockfd, "250 Corbin's smtp server Hello\n");
 			break;
 		case MAIL :
 			seenMAIL = 1;
@@ -132,18 +141,48 @@ void* processConnection(void *arg) {
 			
 			break;
 		case DATA :
-			break;
+			if(seenMAIL && seenRCPT){
+			
+				writeCommand(sockfd, "354 Send message content; end with <CRLF>.<CRLF>\n");
+				dataRead = readCommand(sockfd);
+				while(dataRead != "."){
+					messageBuffer.append(dataRead + "\n");
+					dataRead = readCommand(sockfd);
+				}
+				
+				currentTime = time(NULL);
+				
+				//removes the last new line from the message
+				messageBuffer = messageBuffer.substr(0, messageBuffer.length() - 1);
+				
+				ofs.open(forwardPath.c_str());
+				ofs << "From " + reversePath << endl;
+				ofs << asctime(localtime(&currentTime)) << endl;
+				ofs << messageBuffer;
+				ofs.close();
+
+				seenDATA = 1;
+				writeCommand(sockfd, "250 OK\n");
+				break;
+			}
+			else {
+				writeCommand(sockfd, "Must specify RCPT TO and MAIL FROM first\n");
+				break;
+			}
 		case RSET :
+			seenMAIL = 0;
+			seenRCPT = 0;
+			seenDATA = 0;
 			forwardPath = "";
 			reversePath = "";
-			messageBuffer = NULL;
+			messageBuffer = "";
 			
 			writeCommand(sockfd, "250 OK\n");
 			break;
 		case NOOP :
 			break;
 		case QUIT :
-			writeCommand(sockfd, "250\n");
+			writeCommand(sockfd, "221 Connection closing\n");
 			exit(1);
 			break;
 		default :
