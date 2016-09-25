@@ -1,7 +1,7 @@
 #include "includes.h"
 
 #define MAXLINE 1024
-#define PORT 9873
+#define PORT 9874
 #define DEBUG 1
 
 // ***************************************************************************
@@ -10,7 +10,14 @@
 // ***************************************************************************
 string readCommand(int sockfd) {
 	char* buffer = new char[10];
+
+	read(sockfd, buffer, 400);
 	
+	// Removes last 2 characters from the buffer
+	if('\n' == buffer[strlen(buffer) - 1])
+    		buffer[strlen(buffer) - 2] = '\0';
+    		
+	return buffer;
 }
 
 // ***************************************************************************
@@ -18,7 +25,37 @@ string readCommand(int sockfd) {
 // *  Read the string and find the command, returning the number we assoicated
 // *  with that command.
 // ***************************************************************************
-int parseCommand(string commandString) { }
+int parseCommand(string commandString) {
+	string theString(commandString);
+	
+	if (theString == "HELO"){
+		return 1;
+	}
+	else if (theString == "MAIL") {
+		return 2;
+	}
+	else if (theString == "RCPT") {
+		return 3;
+	}
+	else if (theString == "DATA") {
+		return 4;
+	}
+	else if (theString == "RSET") {
+		return 5;
+	}
+	else if (theString == "NOOP") {
+		return 6;
+	}
+	else if (theString == "QUIT") {
+		cout << "why" << endl;
+		return 7;
+	}
+	else {
+		//cout << theString << endl;
+	}
+	
+	
+}
 
 // ***************************************************************************
 // * processConnection()
@@ -77,11 +114,13 @@ void* processConnection(void *arg) {
 		case NOOP :
 			break;
 		case QUIT :
+
 			exit(1);
 			break;
 		default :
-			cout << cmdString << endl;
-	//		cout << "Unknown command (" << command << ")" << endl;
+
+			cout << "Unknown command (" << command << ")" << endl;
+
 		}
 	}
 
@@ -163,9 +202,11 @@ int main(int argc, char **argv) {
 	while (1) {
 		if (DEBUG)
 			cout << "Calling accept() in master thread." << endl;
-		int connfd = -1;
+			
+		int* connfd = new int;
+		*connfd = -1;
 
-		if ((connfd = accept(listenfd, (sockaddr *) NULL, NULL)) < 0) {
+		if ((*connfd = accept(listenfd, (sockaddr *) NULL, NULL)) < 0) {
 			cout << "accept() failed: " << strerror(errno) <<  endl;
 			exit(-1);
 		}
@@ -174,7 +215,7 @@ int main(int argc, char **argv) {
 			cout << "Spawing new thread to handled connect on fd=" << connfd << endl;
 
 		pthread_t* threadID = new pthread_t;
-		pthread_create(threadID, NULL, processConnection, (void *)&connfd);
+		pthread_create(threadID, NULL, processConnection, (void *)connfd);
 		threads.insert(threadID);
 	}
 }
