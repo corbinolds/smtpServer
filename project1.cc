@@ -1,7 +1,7 @@
 #include "includes.h"
 
 #define MAXLINE 1024
-#define PORT 9874
+#define PORT 9873
 #define DEBUG 1
 
 // ***************************************************************************
@@ -28,13 +28,13 @@ string readCommand(int sockfd) {
 int parseCommand(string commandString) {
 	string theString(commandString);
 	
-	if (theString == "HELO"){
+	if (theString == "HELO") {
 		return 1;
 	}
-	else if (theString == "MAIL") {
+	else if (theString == "MAIL FROM") {
 		return 2;
 	}
-	else if (theString == "RCPT") {
+	else if (theString == "RCPT TO") {
 		return 3;
 	}
 	else if (theString == "DATA") {
@@ -50,11 +50,15 @@ int parseCommand(string commandString) {
 		cout << "why" << endl;
 		return 7;
 	}
-	else {
-		//cout << theString << endl;
-	}
 	
+}
+
+
+void writeCommand(int sockfd, string message) {
+	int size = message.length();
+	write(sockfd, message.c_str(), size);
 	
+	return;
 }
 
 // ***************************************************************************
@@ -82,6 +86,9 @@ void* processConnection(void *arg) {
 	int seenDATA = 0;
 	string forwardPath = "";
 	string reversePath = "";
+	string cmdString = "";
+	string getString = "";
+	string parameter = "";
 	char *messageBuffer = NULL;
 	while (connectionActive) {
 
@@ -89,7 +96,11 @@ void* processConnection(void *arg) {
 		// *******************************************************
 		// * Read the command from the socket.
 		// *******************************************************
-		string cmdString = readCommand(sockfd);
+		string getString = readCommand(sockfd);
+		int findColon = getString.find(":");
+		
+		cmdString = getString.substr(0, findColon);
+		parameter = getString.substr(findColon + 1, getString.length() - findColon);
 
 		// *******************************************************
 		// * Parse the command.
@@ -101,26 +112,44 @@ void* processConnection(void *arg) {
 		// *******************************************************
 		switch (command) {
 		case HELO :
+			writeCommand(sockfd, "I GOT YOUR MESSAGE\n");
 			break;
 		case MAIL :
-
+			seenMAIL = 1;
+			seenRCPT = 0;
+			seenDATA = 0;
+		
+			forwardPath = "";
+			reversePath = parameter.substr(1, parameter.length() - 2);
+			
+			writeCommand(sockfd, "250 OK\n");
 			break;
 		case RCPT :
+			seenRCPT = 1;
+			forwardPath = parameter.substr(1, parameter.length() - 2);
+			
+			writeCommand(sockfd, "250 OK\n");
+			
 			break;
 		case DATA :
 			break;
 		case RSET :
+			forwardPath = "";
+			reversePath = "";
+			messageBuffer = NULL;
+			
+			writeCommand(sockfd, "250 OK\n");
 			break;
 		case NOOP :
 			break;
 		case QUIT :
-
+			writeCommand(sockfd, "250\n");
 			exit(1);
 			break;
 		default :
 
-			cout << "Unknown command (" << command << ")" << endl;
-
+			cout << "Unknown command (" << cmdString << ")" << endl;
+			writeCommand(sockfd, "500 Unkown command\n");
 		}
 	}
 
