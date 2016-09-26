@@ -14,6 +14,9 @@
 
 #include <ctime>
 
+#include <netinet/in.h>
+#include <netdb.h> 
+
 #include <string>
 #include <set>
 #include <algorithm>

@@ -31,6 +31,8 @@ string readCommand(int sockfd) {
 int parseCommand(string commandString) {
 	string theString(commandString);
 	
+	
+	
 	if (theString == "HELO") {
 		return 1;
 	}
@@ -63,6 +65,50 @@ void writeCommand(int sockfd, string message) {
 	return;
 }
 
+void connectToUrMumGoteem() {
+	//Apparently the inet_addr function reverses the ip of exchange.mines.edu so I had to put it in backwards
+	//Correct ip is 138.67.132.206
+	
+	cout << "HELLLLLLLLLLLLLLLLLLLLLLOOOO" << endl;
+	
+	int sockfd, portno, n;
+    	struct sockaddr_in serv_addr;
+    	struct hostent *server;
+
+    	char buffer[256];
+ 
+    	portno = 25;
+    	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    	if (sockfd < 0) 
+        cout << "ERROR opening socket" << endl;
+    	server = gethostbyname("exchange.mines.edu");
+    	
+    	if (server == NULL) {
+    	    fprintf(stderr,"ERROR, no such host\n");
+    	    exit(0);
+    	}
+    	bzero((char *) &serv_addr, sizeof(serv_addr));
+    	serv_addr.sin_family = AF_INET;
+    	bcopy((char *)server->h_addr, 
+    	     (char *)&serv_addr.sin_addr.s_addr,
+    	     server->h_length);
+    	serv_addr.sin_port = htons(portno);
+    	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
+    	    cout << "ERROR connecting" << endl;
+    	printf("Please enter the message: ");
+    	bzero(buffer,256);
+    	fgets(buffer,255,stdin);
+    	n = write(sockfd,buffer,strlen(buffer));
+    	if (n < 0) 
+    	     cout << "ERROR writing to socket" << endl;
+    	bzero(buffer,256);
+    	n = read(sockfd,buffer,255);
+    	if (n < 0) 
+    	     cout << "ERROR reading from socket" << endl;
+    	printf("%s\n",buffer);
+    	close(sockfd);
+}
+
 // ***************************************************************************
 // * processConnection()
 // *  Master function for processing thread.
@@ -72,6 +118,8 @@ void writeCommand(int sockfd, string message) {
 // *      but once you are processing multiple rquests it might cause problems.
 // ***************************************************************************
 void* processConnection(void *arg) {
+
+	cout << inet_addr("138.67.132.206") << endl;
 
 
 	// *******************************************************
@@ -92,6 +140,10 @@ void* processConnection(void *arg) {
 	string getString = "";
 	string parameter = "";
 	string messageBuffer = "";
+	
+	string username = "";
+	string hostname = "";
+	int findAtSymbol = 0;
 	
 	time_t currentTime;
 	
@@ -130,6 +182,7 @@ void* processConnection(void *arg) {
 		
 			forwardPath = "";
 			reversePath = parameter.substr(1, parameter.length() - 2);
+			messageBuffer = "";
 			
 			writeCommand(sockfd, "250 OK\n");
 			break;
@@ -155,11 +208,20 @@ void* processConnection(void *arg) {
 				//removes the last new line from the message
 				messageBuffer = messageBuffer.substr(0, messageBuffer.length() - 1);
 				
-				ofs.open(forwardPath.c_str());
-				ofs << "From " + reversePath << endl;
-				ofs << asctime(localtime(&currentTime)) << endl;
-				ofs << messageBuffer;
-				ofs.close();
+				findAtSymbol = forwardPath.find("@");
+				username = forwardPath.substr(0, findAtSymbol);
+				hostname = forwardPath.substr(findAtSymbol + 1, forwardPath.length() - findAtSymbol);
+
+				if (hostname == "localhost"){
+					ofs.open(username.c_str());
+					ofs << "From " + reversePath << endl;
+					ofs << asctime(localtime(&currentTime)) << endl;
+					ofs << messageBuffer;
+					ofs.close();
+				}
+				else {
+					connectToUrMumGoteem();
+				}
 
 				seenDATA = 1;
 				writeCommand(sockfd, "250 OK\n");
@@ -188,7 +250,7 @@ void* processConnection(void *arg) {
 		default :
 
 			cout << "Unknown command (" << cmdString << ")" << endl;
-			writeCommand(sockfd, "500 Unkown command\n");
+			writeCommand(sockfd, "500 Unkown command(" + cmdString + ")\n");
 		}
 	}
 
@@ -196,7 +258,6 @@ void* processConnection(void *arg) {
 		cout << "Thread terminating" << endl;
 
 }
-
 
 // ***************************************************************************
 // * Main
