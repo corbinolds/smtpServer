@@ -65,11 +65,10 @@ void writeCommand(int sockfd, string message) {
 	return;
 }
 
-void connectToUrMumGoteem() {
+void connectToUrMumGoteem(string recipient, string sender, string message) {
 	//Apparently the inet_addr function reverses the ip of exchange.mines.edu so I had to put it in backwards
 	//Correct ip is 138.67.132.206
-	
-	cout << "HELLLLLLLLLLLLLLLLLLLLLLOOOO" << endl;
+	string read = "";
 	
 	int sockfd, portno, n;
     	struct sockaddr_in serv_addr;
@@ -95,18 +94,69 @@ void connectToUrMumGoteem() {
     	serv_addr.sin_port = htons(portno);
     	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
     	    cout << "ERROR connecting" << endl;
-    	printf("Please enter the message: ");
     	bzero(buffer,256);
-    	fgets(buffer,255,stdin);
-    	n = write(sockfd,buffer,strlen(buffer));
-    	if (n < 0) 
-    	     cout << "ERROR writing to socket" << endl;
-    	bzero(buffer,256);
-    	n = read(sockfd,buffer,255);
-    	if (n < 0) 
-    	     cout << "ERROR reading from socket" << endl;
-    	printf("%s\n",buffer);
-    	close(sockfd);
+    	
+    	
+    	read = readCommand(sockfd);
+    	//if doesn't equal connection successful code
+    	if(read.substr(0, 3) != "220"){
+    		cout << "CONNECTION ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+
+	writeCommand(sockfd, "HELO\r\n");
+	read = readCommand(sockfd);
+	//if doesn't equal ok code
+	if(read.substr(0, 3) != "250"){
+    		cout << "HELO ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+
+	writeCommand(sockfd, "MAIL FROM:" + sender + "\r\n");
+	read = readCommand(sockfd);
+	//if doesn't equal ok code
+	if(read.substr(0, 3) != "250"){
+    		cout << "MAIL FROM ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+    	
+	writeCommand(sockfd, "RCPT TO:" + recipient + "\r\n");
+	read = readCommand(sockfd);
+	//if doesn't equal ok code
+	if(read.substr(0, 3) != "250"){
+    		cout << "RCPT TO ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+    	
+	writeCommand(sockfd, "DATA\r\n");
+	read = readCommand(sockfd);
+	//if doesn't equal start mail input code
+	if(read.substr(0, 3) != "354"){
+    		cout << "START DATA INPUT ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+    	
+	writeCommand(sockfd, message + "\r\n.\r\n");
+	read = readCommand(sockfd);
+	//if doesn't equal ok code
+	if(read.substr(0, 3) != "250"){
+    		cout << "DATA INPUT ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+	writeCommand(sockfd, "QUIT\r\n");
+	read = readCommand(sockfd);
+	if(read.substr(0, 3) != "221"){
+    		cout << "QUIT ERROR" << endl;
+    		close(sockfd);
+    		return;
+    	}
+	close(sockfd);
 }
 
 // ***************************************************************************
@@ -118,9 +168,6 @@ void connectToUrMumGoteem() {
 // *      but once you are processing multiple rquests it might cause problems.
 // ***************************************************************************
 void* processConnection(void *arg) {
-
-	cout << inet_addr("138.67.132.206") << endl;
-
 
 	// *******************************************************
 	// * This is a little bit of a cheat, but if you end up
@@ -195,6 +242,7 @@ void* processConnection(void *arg) {
 			break;
 		case DATA :
 			if(seenMAIL && seenRCPT){
+				messageBuffer = "";
 			
 				writeCommand(sockfd, "354 Send message content; end with <CRLF>.<CRLF>\n");
 				dataRead = readCommand(sockfd);
@@ -220,7 +268,7 @@ void* processConnection(void *arg) {
 					ofs.close();
 				}
 				else {
-					connectToUrMumGoteem();
+					connectToUrMumGoteem(forwardPath, reversePath, messageBuffer);
 				}
 
 				seenDATA = 1;
