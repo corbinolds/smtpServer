@@ -57,7 +57,7 @@ int parseCommand(string commandString) {
 	
 }
 
-
+//command to write to a socket
 void writeCommand(int sockfd, string message) {
 	int size = message.length();
 	write(sockfd, message.c_str(), size);
@@ -65,11 +65,11 @@ void writeCommand(int sockfd, string message) {
 	return;
 }
 
-void connectToUrMumGoteem(string recipient, string sender, string message) {
-	//Apparently the inet_addr function reverses the ip of exchange.mines.edu so I had to put it in backwards
-	//Correct ip is 138.67.132.206
+//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information
+string connectToSecondarySMTP(string recipient, string sender, string message) {
 	string read = "";
 	
+	//handles opening the socket
 	int sockfd, portno, n;
     	struct sockaddr_in serv_addr;
     	struct hostent *server;
@@ -96,67 +96,83 @@ void connectToUrMumGoteem(string recipient, string sender, string message) {
     	    cout << "ERROR connecting" << endl;
     	bzero(buffer,256);
     	
-    	
+    	//after connection, read connect message
     	read = readCommand(sockfd);
-    	//if doesn't equal connection successful code
+    	//if doesn't equal connection successful code, break
     	if(read.substr(0, 3) != "220"){
-    		cout << "CONNECTION ERROR" << endl;
+    		string error = "CONNECTION ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
 
+	//Say HELO to the host
 	writeCommand(sockfd, "HELO\r\n");
 	read = readCommand(sockfd);
-	//if doesn't equal ok code
+	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
-    		cout << "HELO ERROR" << endl;
+		string error = "HELO ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
 
+	//Specify MAIL FROM on the host
 	writeCommand(sockfd, "MAIL FROM:" + sender + "\r\n");
 	read = readCommand(sockfd);
-	//if doesn't equal ok code
+	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
-    		cout << "MAIL FROM ERROR" << endl;
+		string error = "MAIL FROM ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
     	
+    	//Specify RCPT TO on the host
 	writeCommand(sockfd, "RCPT TO:" + recipient + "\r\n");
 	read = readCommand(sockfd);
-	//if doesn't equal ok code
+	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
-    		cout << "RCPT TO ERROR" << endl;
+		string error = "RCPT TO ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
     	
+    	//Specify start data input on the host
 	writeCommand(sockfd, "DATA\r\n");
 	read = readCommand(sockfd);
-	//if doesn't equal start mail input code
+	//if doesn't equal start mail input code, break
 	if(read.substr(0, 3) != "354"){
-    		cout << "START DATA INPUT ERROR" << endl;
+		string error = "START DATA INPUT ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
     	
+    	//Actually put in the message on the host for the DATA input
 	writeCommand(sockfd, message + "\r\n.\r\n");
 	read = readCommand(sockfd);
-	//if doesn't equal ok code
+	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
-    		cout << "DATA INPUT ERROR" << endl;
+		string error = "DATA INPUT ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
+    	
+    	//Disconnect from the host
 	writeCommand(sockfd, "QUIT\r\n");
 	read = readCommand(sockfd);
+	//If doesn't equal disconnect code, break
 	if(read.substr(0, 3) != "221"){
-    		cout << "QUIT ERROR" << endl;
+		string error = "QUIT ERROR\n";
+    		cout << error;
     		close(sockfd);
-    		return;
+    		return error;
     	}
 	close(sockfd);
+	return "";
 }
 
 // ***************************************************************************
@@ -181,17 +197,19 @@ void* processConnection(void *arg) {
 	int seenMAIL = 0;
 	int seenRCPT = 0;
 	int seenDATA = 0;
+	
+	//strings used to store MAIL FROM, RCPT TO, username, host, and input values throughout the commands
 	string forwardPath = "";
 	string reversePath = "";
 	string cmdString = "";
 	string getString = "";
 	string parameter = "";
 	string messageBuffer = "";
-	
 	string username = "";
 	string hostname = "";
 	int findAtSymbol = 0;
 	
+	//used for displaying time in localhost messages
 	time_t currentTime;
 	
 	string dataRead = "";
@@ -266,13 +284,20 @@ void* processConnection(void *arg) {
 					ofs << asctime(localtime(&currentTime)) << endl;
 					ofs << messageBuffer;
 					ofs.close();
+					writeCommand(sockfd, "250 OK\n");
 				}
 				else {
-					connectToUrMumGoteem(forwardPath, reversePath, messageBuffer);
+					string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer);
+					if (status == ""){
+						writeCommand(sockfd, "250 OK\n");
+					}
+					else {
+						writeCommand(sockfd, status);
+					}
 				}
 
 				seenDATA = 1;
-				writeCommand(sockfd, "250 OK\n");
+
 				break;
 			}
 			else {
