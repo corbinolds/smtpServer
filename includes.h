@@ -15,7 +15,10 @@
 #include <ctime>
 
 #include <netinet/in.h>
-#include <netdb.h> 
+#include <netdb.h>
+
+#include <resolv.h>
+#include <arpa/nameser.h>
 
 #include <string>
 #include <set>

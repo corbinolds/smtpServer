@@ -10,6 +10,7 @@ CXX = g++
 LD = g++
 CXXFLAGS = -g -pthread
 LDFLAGS = -g -pthread
+LRESOLVFLAG = -lresolv
 
 #
 # You should be able to add object files here without changing anything else
@@ -17,7 +18,7 @@ LDFLAGS = -g -pthread
 OBJ_FILES = project1.o
 
 project1: ${OBJ_FILES}
-	${LD} ${LDFLAGS} ${OBJ_FILES} -o $@ ${LIBRARYS}
+	${LD} ${LDFLAGS} ${OBJ_FILES} ${LRESOLVFLAG} -o $@ ${LIBRARYS}
 
 #
 # Please remember not to submit objects or binarys.

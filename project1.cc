@@ -65,8 +65,118 @@ void writeCommand(int sockfd, string message) {
 	return;
 }
 
-//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information
-string connectToSecondarySMTP(string recipient, string sender, string message) {
+//part of getting the MX record. Credit goes to http://www.sourcexr.com/articles/2013/10/12/dns-records-query-with-res_query
+string parse_record (unsigned char *buffer, size_t r, const char *section, ns_sect s, int idx, ns_msg *m) {
+
+	ns_rr rr;
+    	int k = ns_parserr (m, s, idx, &rr);
+    	if (k == -1) {
+        	return "ERROR";
+    	}
+
+    	//cout << section << " " << ns_rr_name (rr) << " "
+        //	<< ns_rr_type (rr) << " " << ns_rr_class (rr)
+        //      	<< ns_rr_ttl (rr) << " ";
+
+    	const size_t size = NS_MAXDNAME;
+    	unsigned char name[size];
+    	int t = ns_rr_type (rr);
+
+    	const u_char *data = ns_rr_rdata (rr);
+    	if (t == T_MX) {
+        	int pref = ns_get16 (data);
+        	ns_name_unpack (buffer, buffer + r, data + sizeof (u_int16_t),
+                        name, size);
+        	char name2[size];
+        	ns_name_ntop (name, name2, size);
+        	return name2;
+    	}
+
+	else {
+		return "ERROR";
+	}
+}
+
+//part of getting the MX record. Credit goes to http://www.sourcexr.com/articles/2013/10/12/dns-records-query-with-res_query
+string getTheHost(string domain) {
+	const size_t size = 1024;
+    	unsigned char buffer[size];
+
+    	const char *host = domain.c_str();
+
+    	int r = res_query (host, C_IN, T_MX, buffer, size);
+	if (r == -1) {
+     		return "ERROR";
+	}
+    	else {
+		if (r == static_cast<int> (size)) {
+            		return "ERROR";
+        	}
+    	}
+    	
+    	
+    	HEADER *hdr = reinterpret_cast<HEADER*> (buffer);
+	
+	if (hdr->rcode != NOERROR) {
+
+	        switch (hdr->rcode) {
+	        case FORMERR:
+	        	cerr << "Format error";
+            		break;
+        	case SERVFAIL:
+        		cerr << "Server failure";
+            		break;
+        	case NXDOMAIN:
+            		cerr << "Name error";
+            		break;
+        	case NOTIMP:
+            		cerr << "Not implemented";
+            		break;
+        	case REFUSED:
+            		cerr << "Refused";
+            		break;
+        	default:
+            		cerr << "Unknown error";
+        	}
+        	return "ERROR";
+    	}
+    	
+    	int question = ntohs (hdr->qdcount);
+    	int answers = ntohs (hdr->ancount);
+    	int nameservers = ntohs (hdr->nscount);
+    	int addrrecords = ntohs (hdr->arcount);
+
+	ns_msg m;
+    	int k = ns_initparse (buffer, r, &m);
+    	if (k == -1) {
+        	return "ERROR";
+    	}
+
+
+	for (int i = 0; i < question; ++i) {
+        	ns_rr rr;
+        	int k = ns_parserr (&m, ns_s_qd, i, &rr);
+        	if (k == -1) {
+            		return "ERROR";
+        	}
+    	}
+    	for (int i = 0; i < answers; ++i) {
+        	return parse_record (buffer, r, "answers", ns_s_an, i, &m);
+    	}
+
+    	for (int i = 0; i < nameservers; ++i) {
+        	return parse_record (buffer, r, "nameservers", ns_s_ns, i, &m);
+    	}
+
+    	for (int i = 0; i < addrrecords; ++i) {
+        	return parse_record (buffer, r, "addrrecords", ns_s_ar, i, &m);
+    	}
+    	
+    	
+}
+
+//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information. credit goes to http://www.linuxhowtos.org/C_C++/socket.htm
+string connectToSecondarySMTP(string recipient, string sender, string message, string domain) {
 	string read = "";
 	
 	//handles opening the socket
@@ -78,9 +188,18 @@ string connectToSecondarySMTP(string recipient, string sender, string message) {
  
     	portno = 25;
     	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    	if (sockfd < 0) 
-        cout << "ERROR opening socket" << endl;
-    	server = gethostbyname("exchange.mines.edu");
+    	if (sockfd < 0) {
+        	cout << "ERROR opening socket" << endl;
+        }
+        string hostname = getTheHost(domain);
+        
+        if(hostname.c_str() == "ERROR"){
+        	return "Error with recipient's host name";
+        }
+        else{
+        	server = gethostbyname(hostname.c_str());
+        }
+        
     	
     	if (server == NULL) {
     	    fprintf(stderr,"ERROR, no such host\n");
@@ -107,10 +226,10 @@ string connectToSecondarySMTP(string recipient, string sender, string message) {
     	}
 
 	//Say HELO to the host
-	writeCommand(sockfd, "HELO\r\n");
+	writeCommand(sockfd, "HELO " + domain + "\r\n");
 	read = readCommand(sockfd);
-	//if doesn't equal ok code, break
-	if(read.substr(0, 3) != "250"){
+	//if doesn't equal ok code or does not equal command parameter not implemented code (needed for janus and cardea), break
+	if(read.substr(0, 3) != "250" && read.substr(0,3) != "504"){
 		string error = "HELO ERROR\n";
     		cout << error;
     		close(sockfd);
@@ -118,8 +237,9 @@ string connectToSecondarySMTP(string recipient, string sender, string message) {
     	}
 
 	//Specify MAIL FROM on the host
-	writeCommand(sockfd, "MAIL FROM:" + sender + "\r\n");
+	writeCommand(sockfd, "MAIL FROM:<" + sender + ">\r\n");
 	read = readCommand(sockfd);
+	cout << read << endl;
 	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
 		string error = "MAIL FROM ERROR\n";
@@ -129,7 +249,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message) {
     	}
     	
     	//Specify RCPT TO on the host
-	writeCommand(sockfd, "RCPT TO:" + recipient + "\r\n");
+	writeCommand(sockfd, "RCPT TO:<" + recipient + ">\r\n");
 	read = readCommand(sockfd);
 	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
@@ -153,6 +273,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message) {
     	//Actually put in the message on the host for the DATA input
 	writeCommand(sockfd, message + "\r\n.\r\n");
 	read = readCommand(sockfd);
+	cout << read << endl;
 	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
 		string error = "DATA INPUT ERROR\n";
@@ -184,7 +305,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message) {
 // *      but once you are processing multiple rquests it might cause problems.
 // ***************************************************************************
 void* processConnection(void *arg) {
-
+	
 	// *******************************************************
 	// * This is a little bit of a cheat, but if you end up
 	// * with a FD of more than 64 bits you are in trouble
@@ -278,16 +399,18 @@ void* processConnection(void *arg) {
 				username = forwardPath.substr(0, findAtSymbol);
 				hostname = forwardPath.substr(findAtSymbol + 1, forwardPath.length() - findAtSymbol);
 
+				//if domain is local, message gets stored in the server
 				if (hostname == "localhost"){
 					ofs.open(username.c_str());
 					ofs << "From " + reversePath << endl;
 					ofs << asctime(localtime(&currentTime)) << endl;
-					ofs << messageBuffer;
+					ofs << messageBuffer << "\n";
 					ofs.close();
 					writeCommand(sockfd, "250 OK\n");
 				}
+				//if domain is not local, connect to the remote server and send the email with smtp commands through it.
 				else {
-					string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer);
+					string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer, hostname);
 					if (status == ""){
 						writeCommand(sockfd, "250 OK\n");
 					}
