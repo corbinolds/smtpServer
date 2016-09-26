@@ -20,6 +20,8 @@
 #include <resolv.h>
 #include <arpa/nameser.h>
 
+#include <stdio.h>
+
 #include <string>
 #include <set>
 #include <algorithm>

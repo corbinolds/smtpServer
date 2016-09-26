@@ -1,7 +1,7 @@
 #include "includes.h"
 
 #define MAXLINE 1024
-#define PORT 9872
+#define PORT 9873
 #define DEBUG 1
 
 // ***************************************************************************
@@ -30,8 +30,6 @@ string readCommand(int sockfd) {
 // ***************************************************************************
 int parseCommand(string commandString) {
 	string theString(commandString);
-	
-	
 	
 	if (theString == "HELO") {
 		return 1;
@@ -73,10 +71,6 @@ string parse_record (unsigned char *buffer, size_t r, const char *section, ns_se
     	if (k == -1) {
         	return "ERROR";
     	}
-
-    	//cout << section << " " << ns_rr_name (rr) << " "
-        //	<< ns_rr_type (rr) << " " << ns_rr_class (rr)
-        //      	<< ns_rr_ttl (rr) << " ";
 
     	const size_t size = NS_MAXDNAME;
     	unsigned char name[size];
@@ -175,48 +169,12 @@ string getTheHost(string domain) {
     	
 }
 
-//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information. credit goes to http://www.linuxhowtos.org/C_C++/socket.htm
-string connectToSecondarySMTP(string recipient, string sender, string message, string domain) {
+//Executes all the commands on the foreign host needed to send an email with all of the data the user already inputted in my smtp server
+string sendMail(int sockfd, string recipient, string sender, string message, string domain) {
 	string read = "";
-	
-	//handles opening the socket
-	int sockfd, portno, n;
-    	struct sockaddr_in serv_addr;
-    	struct hostent *server;
-
-    	char buffer[256];
- 
-    	portno = 25;
-    	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    	if (sockfd < 0) {
-        	cout << "ERROR opening socket" << endl;
-        }
-        string hostname = getTheHost(domain);
-        
-        if(hostname.c_str() == "ERROR"){
-        	return "Error with recipient's host name";
-        }
-        else{
-        	server = gethostbyname(hostname.c_str());
-        }
-        
-    	
-    	if (server == NULL) {
-    	    fprintf(stderr,"ERROR, no such host\n");
-    	    exit(0);
-    	}
-    	bzero((char *) &serv_addr, sizeof(serv_addr));
-    	serv_addr.sin_family = AF_INET;
-    	bcopy((char *)server->h_addr, 
-    	     (char *)&serv_addr.sin_addr.s_addr,
-    	     server->h_length);
-    	serv_addr.sin_port = htons(portno);
-    	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
-    	    cout << "ERROR connecting" << endl;
-    	bzero(buffer,256);
-    	
-    	//after connection, read connect message
+	//after connection, read connect message
     	read = readCommand(sockfd);
+    	cout << read << endl;
     	//if doesn't equal connection successful code, break
     	if(read.substr(0, 3) != "220"){
     		string error = "CONNECTION ERROR\n";
@@ -228,6 +186,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message, s
 	//Say HELO to the host
 	writeCommand(sockfd, "HELO " + domain + "\r\n");
 	read = readCommand(sockfd);
+    	cout << read << endl;
 	//if doesn't equal ok code or does not equal command parameter not implemented code (needed for janus and cardea), break
 	if(read.substr(0, 3) != "250" && read.substr(0,3) != "504"){
 		string error = "HELO ERROR\n";
@@ -251,6 +210,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message, s
     	//Specify RCPT TO on the host
 	writeCommand(sockfd, "RCPT TO:<" + recipient + ">\r\n");
 	read = readCommand(sockfd);
+	cout << read << endl;
 	//if doesn't equal ok code, break
 	if(read.substr(0, 3) != "250"){
 		string error = "RCPT TO ERROR\n";
@@ -262,6 +222,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message, s
     	//Specify start data input on the host
 	writeCommand(sockfd, "DATA\r\n");
 	read = readCommand(sockfd);
+	cout << read << endl;
 	//if doesn't equal start mail input code, break
 	if(read.substr(0, 3) != "354"){
 		string error = "START DATA INPUT ERROR\n";
@@ -285,6 +246,7 @@ string connectToSecondarySMTP(string recipient, string sender, string message, s
     	//Disconnect from the host
 	writeCommand(sockfd, "QUIT\r\n");
 	read = readCommand(sockfd);
+    	cout << read << endl;
 	//If doesn't equal disconnect code, break
 	if(read.substr(0, 3) != "221"){
 		string error = "QUIT ERROR\n";
@@ -292,8 +254,49 @@ string connectToSecondarySMTP(string recipient, string sender, string message, s
     		close(sockfd);
     		return error;
     	}
-	close(sockfd);
-	return "";
+    	close(sockfd);
+    	return "";
+}
+
+//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information. credit for socket handling to http://www.linuxhowtos.org/C_C++/socket.htm
+string connectToSecondarySMTP(string recipient, string sender, string message, string domain) {
+	string read = "";
+	
+	//handles opening the socket
+	int sockfd, portno, n;
+    	struct sockaddr_in serv_addr;
+    	struct hostent *server;
+
+    	char buffer[256];
+ 
+    	portno = 25;
+    	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    	if (sockfd < 0) {
+        	cout << "ERROR opening socket" << endl;
+        }
+        string hostname = getTheHost(domain);
+        
+        if(hostname.c_str() == "ERROR"){
+        	return "Error with recipient's host name";
+        }
+        else{
+        	server = gethostbyname(hostname.c_str());
+        }
+    	if (server == NULL) {
+    	    fprintf(stderr,"ERROR, no such host\n");
+    	    exit(0);
+    	}
+    	bzero((char *) &serv_addr, sizeof(serv_addr));
+    	serv_addr.sin_family = AF_INET;
+    	bcopy((char *)server->h_addr, 
+    	     (char *)&serv_addr.sin_addr.s_addr,
+    	     server->h_length);
+    	serv_addr.sin_port = htons(portno);
+    	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
+    	    cout << "ERROR connecting" << endl;
+    	bzero(buffer,256);
+   
+    	return sendMail(sockfd,recipient, sender, message, domain);
 }
 
 // ***************************************************************************
@@ -373,10 +376,16 @@ void* processConnection(void *arg) {
 			writeCommand(sockfd, "250 OK\n");
 			break;
 		case RCPT :
-			seenRCPT = 1;
-			forwardPath = parameter.substr(1, parameter.length() - 2);
+			if(seenMAIL){
 			
-			writeCommand(sockfd, "250 OK\n");
+				seenRCPT = 1;
+				forwardPath = parameter.substr(1, parameter.length() - 2);
+			
+				writeCommand(sockfd, "250 OK\n");
+			}
+			else{
+				writeCommand(sockfd, "503 Need MAIL FROM command\n");
+			}
 			
 			break;
 		case DATA :
@@ -401,15 +410,16 @@ void* processConnection(void *arg) {
 
 				//if domain is local, message gets stored in the server
 				if (hostname == "localhost"){
-					ofs.open(username.c_str());
+					ofs.open(username.c_str(), ios_base::app);
 					ofs << "From " + reversePath << endl;
-					ofs << asctime(localtime(&currentTime)) << endl;
+					ofs << asctime(localtime(&currentTime));
 					ofs << messageBuffer << "\n";
 					ofs.close();
 					writeCommand(sockfd, "250 OK\n");
 				}
 				//if domain is not local, connect to the remote server and send the email with smtp commands through it.
 				else {
+					writeCommand(sockfd, "251 User not local; will forward to <" + hostname + ">\n");
 					string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer, hostname);
 					if (status == ""){
 						writeCommand(sockfd, "250 OK\n");
