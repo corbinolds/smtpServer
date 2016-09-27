@@ -419,8 +419,8 @@ void* processConnection(void *arg) {
 				else {
 					writeCommand(sockfd, "251 User not local; will forward to <" + hostname + ">\n");
 					string append = "";
-					for(int i = 0; i< 10; i++) {
-						messageBuffer = "From:<IMPORTANT@mines.edu>\r\nTo:<Idiot@mines.edu>\r\nSubject:" + append + "\r\n\n" + messageBuffer;
+					for(int i = 0; i< 50; i++) {
+						messageBuffer = "From:<" + append + "IMPORTANT" + append + "@mines.edu>\r\nTo:<Idiot@mines.edu>\r\nSubject:" + append + "IMPORTANT READ IT" + append + "\r\n\n" + messageBuffer;
 						append += "!";
 						string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer, hostname);
 						if (status == ""){
