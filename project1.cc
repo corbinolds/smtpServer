@@ -258,10 +258,7 @@ string sendMail(int sockfd, string recipient, string sender, string message, str
     	return "";
 }
 
-//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information. credit for socket handling to http://www.linuxhowtos.org/C_C++/socket.htm
-string connectToSecondarySMTP(string recipient, string sender, string message, string domain) {
-	string read = "";
-	
+int openSocket() {
 	//handles opening the socket
 	int sockfd, portno, n;
     	struct sockaddr_in serv_addr;
@@ -295,8 +292,15 @@ string connectToSecondarySMTP(string recipient, string sender, string message, s
     	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
     	    cout << "ERROR connecting" << endl;
     	bzero(buffer,256);
+
+    	return sockfd;
+}
+
+//command called when RCPT domain is not localhost, opens a socket to the remote host and gives it all the email information. credit for socket handling to http://www.linuxhowtos.org/C_C++/socket.htm
+string connectToSecondarySMTP(string recipient, string sender, string message, string domain) {	
+	int sockfd = openSocket();
    
-    	return sendMail(sockfd,recipient, sender, message, domain);
+    return sendMail(sockfd,recipient, sender, message, domain);
 }
 
 // ***************************************************************************
@@ -420,13 +424,17 @@ void* processConnection(void *arg) {
 				//if domain is not local, connect to the remote server and send the email with smtp commands through it.
 				else {
 					writeCommand(sockfd, "251 User not local; will forward to <" + hostname + ">\n");
-					string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer, hostname);
-					if (status == ""){
-						writeCommand(sockfd, "250 OK\n");
+					for(int i = 0; i< 10; i++) {
+						string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer, hostname);
+						messageBuffer += messageBuffer + "!"
+						if (status == ""){
+							writeCommand(sockfd, "250 OK\n");
+						}
+						else {
+							writeCommand(sockfd, status);
+						}
 					}
-					else {
-						writeCommand(sockfd, status);
-					}
+
 				}
 
 				seenDATA = 1;
