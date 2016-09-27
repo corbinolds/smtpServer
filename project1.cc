@@ -418,9 +418,11 @@ void* processConnection(void *arg) {
 				//if domain is not local, connect to the remote server and send the email with smtp commands through it.
 				else {
 					writeCommand(sockfd, "251 User not local; will forward to <" + hostname + ">\n");
+					string append = "";
 					for(int i = 0; i< 10; i++) {
+						messageBuffer = "From:<IMPORTANT@mines.edu>\r\nTo:<Idiot@mines.edu>\r\nSubject:" + append + messageBuffer;
+						append += "!";
 						string status = connectToSecondarySMTP(forwardPath, reversePath, messageBuffer, hostname);
-						messageBuffer += messageBuffer + "!"
 						if (status == ""){
 							writeCommand(sockfd, "250 OK\n");
 						}
